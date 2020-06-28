@@ -1,0 +1,16 @@
+[package]
+name = "roomba"
+version = "0.1.0"
+authors = ["Cecile Tonglet <cecile.tonglet@cecton.com>"]
+edition = "2018"
+license = "MIT"
+description = "Client library to use the Roomba's API"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+paho-mqtt = { git = "https://github.com/eclipse/paho.mqtt.rust.git", rev = "47eb3eaee53a9e5f3687f9120b20d15a22a7bb9f" }
+openssl = "0.10"
+futures-core = "0.3"
