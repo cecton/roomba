@@ -155,12 +155,7 @@ impl Iterator for Discovery {
                                             return Some(Ok(info));
                                         }
                                     }
-                                    Err(err) => {
-                                        warn!("Error parsing discovery JSON: {}", err);
-                                        // TODO: We should consider defining an error type
-                                        // for the library that includes io, mqtt, json, etc.
-                                        //return Some(Err(err));
-                                    }
+                                    Err(err) => warn!("Error parsing discovery JSON: {}", err),
                                 }
                             }
                         }
