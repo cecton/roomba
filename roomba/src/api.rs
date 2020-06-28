@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::SystemTime;
 
+const POSSIBLE_PREFIXES: &[&str] = &["iRobot-", "Roomba-"];
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Message {
@@ -98,9 +100,7 @@ impl Info {
         self.robot_id
             .clone()
             .unwrap_or_else(|| {
-                let prefixes = &[ "iRobot-", "Roomba-" ];
-
-                for prefix in prefixes {
+                for prefix in POSSIBLE_PREFIXES {
                     if self.hostname.starts_with(prefix) {
                         return self.hostname[prefix.len()..].to_string()
                     }
