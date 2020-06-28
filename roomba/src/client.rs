@@ -150,13 +150,11 @@ impl Iterator for Discovery {
                                 }
                                 match serde_json::from_slice::<Info>(&data[..length]) {
                                     Ok(info) => {
-                                        let robot_id = info.robot_id();
-
-                                        if !self.found.contains(&robot_id) {
-                                            self.found.insert(robot_id);
+                                        if !self.found.contains(&info.ip) {
+                                            self.found.insert(info.ip.clone());
                                             return Some(Ok(info));
                                         }
-                                    },
+                                    }
                                     Err(err) => {
                                         warn!("Error parsing discovery JSON: {}", err);
                                         // TODO: We should consider defining an error type

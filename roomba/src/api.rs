@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-const POSSIBLE_PREFIXES: &[&str] = &["iRobot-", "Roomba-"];
+const POSSIBLE_PREFIXES: &[&str] = &["iRobot", "Roomba"];
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case", untagged)]
@@ -95,64 +95,26 @@ pub struct Info {
     pub attrs: HashMap<String, serde_json::Value>,
 }
 
-impl Info {
-    pub fn robot_id(&self) -> String {
-        self.robot_id
-            .clone()
-            .unwrap_or_else(|| {
-                for prefix in POSSIBLE_PREFIXES {
-                    if self.hostname.starts_with(prefix) {
-                        return self.hostname[prefix.len()..].to_string()
-                    }
-                }
-                // TODO: Should we return a retult/error or option instead of this?
-                "<unknown>".to_string()
-            })
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseRobotIdError;
+
+impl std::fmt::Display for ParseRobotIdError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "could not parse robot ID in hostname")
     }
 }
 
-/////////////////////////////////////////////////////////////////////////////
+impl Info {
+    pub fn robot_id(&self) -> Result<String, ParseRobotIdError> {
+        self.robot_id.clone().map(|x| Ok(x)).unwrap_or_else(|| {
+            let mut it = self.hostname.splitn(2, '-');
+            let (prefix, suffix) = (it.next().unwrap(), it.next());
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+            if !(POSSIBLE_PREFIXES.contains(&prefix) && suffix.is_some()) {
+                return Err(ParseRobotIdError);
+            }
 
-    #[test]
-    fn test_robot_id() {
-        const ROBOT_ID: &str = "12345";
-
-        // Valid robot_id field
-
-        let info = Info {
-            ip: "192.168.0.251".to_string(),
-            hostname: "iRobot-67890".to_string(),
-            robot_id: Some(ROBOT_ID.to_string()),
-            attrs: HashMap::new(),
-        };
-
-        assert_eq!(ROBOT_ID, &info.robot_id());
-
-        // With "iRobot-" hostname
-
-        let info = Info {
-            ip: "192.168.0.251".to_string(),
-            hostname: format!("iRobot-{}", ROBOT_ID),
-            robot_id: None,
-            attrs: HashMap::new(),
-        };
-
-        assert_eq!(ROBOT_ID, &info.robot_id());
-
-        // With "Roomba-" hostname
-
-        let info = Info {
-            ip: "192.168.0.251".to_string(),
-            hostname: format!("Roomba-{}", ROBOT_ID),
-            robot_id: None,
-            attrs: HashMap::new(),
-        };
-
-        assert_eq!(ROBOT_ID, &info.robot_id());
-
+            Ok(suffix.unwrap().to_string())
+        })
     }
 }

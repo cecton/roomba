@@ -27,6 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "found.\nIP address: {}\nBLID/Username/Robot ID: {}",
                         info.ip,
                         info.robot_id()
+                            .unwrap_or_else(|err| panic!("{}: {:?}", err, info)),
                     );
                 } else {
                     let _ = fh.write(b".");
