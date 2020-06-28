@@ -97,6 +97,62 @@ impl Info {
     pub fn robot_id(&self) -> String {
         self.robot_id
             .clone()
-            .unwrap_or_else(|| self.hostname.trim_start_matches("iRobot-").to_string())
+            .unwrap_or_else(|| {
+                let prefixes = &[ "iRobot-", "Roomba-" ];
+
+                for prefix in prefixes {
+                    if self.hostname.starts_with(prefix) {
+                        return self.hostname[prefix.len()..].to_string()
+                    }
+                }
+                // TODO: Should we return a retult/error or option instead of this?
+                "<unknown>".to_string()
+            })
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_robot_id() {
+        const ROBOT_ID: &str = "12345";
+
+        // Valid robot_id field
+
+        let info = Info {
+            ip: "192.168.0.251".to_string(),
+            hostname: "iRobot-67890".to_string(),
+            robot_id: Some(ROBOT_ID.to_string()),
+            attrs: HashMap::new(),
+        };
+
+        assert_eq!(ROBOT_ID, &info.robot_id());
+
+        // With "iRobot-" hostname
+
+        let info = Info {
+            ip: "192.168.0.251".to_string(),
+            hostname: format!("iRobot-{}", ROBOT_ID),
+            robot_id: None,
+            attrs: HashMap::new(),
+        };
+
+        assert_eq!(ROBOT_ID, &info.robot_id());
+
+        // With "Roomba-" hostname
+
+        let info = Info {
+            ip: "192.168.0.251".to_string(),
+            hostname: format!("Roomba-{}", ROBOT_ID),
+            robot_id: None,
+            attrs: HashMap::new(),
+        };
+
+        assert_eq!(ROBOT_ID, &info.robot_id());
+
     }
 }
