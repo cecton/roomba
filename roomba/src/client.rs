@@ -8,6 +8,7 @@ use std::net::{TcpStream, UdpSocket};
 use std::str;
 
 const DISCOVERY_PACKET: &[u8] = b"irobotmcs";
+const GET_PASSWORD_PACKET: &[u8] = &[0xf0, 0x05, 0xef, 0xcc, 0x3b, 0x29, 0x00];
 
 pub struct Client {
     pub mqtt: paho_mqtt::AsyncClient,
@@ -64,29 +65,34 @@ impl Client {
     }
 
     pub fn get_password<H: AsRef<str>>(hostname: H) -> std::io::Result<String> {
-        let packet: &[u8] = &[0xf0, 0x05, 0xef, 0xcc, 0x3b, 0x29, 0x00];
+        trace!("starting procedure to get a password...");
 
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_verify(SslVerifyMode::NONE);
         let connector = builder.build();
 
         let uri = format!("{}:8883", hostname.as_ref());
-        debug!("Attempting SSL conection to '{}'", uri);
+        trace!("connecting to: {}...", uri);
         let socket = TcpStream::connect(uri)?;
         socket.set_read_timeout(Some(std::time::Duration::from_secs(3)))?;
+        trace!("starting TLS transaction...");
         let mut stream = connector.connect("ignore", socket).unwrap();
 
         let mut attempts = 0;
         loop {
             let mut data = Vec::new();
 
-            stream.write_all(&packet)?;
+            attempts += 1;
+            stream.write_all(GET_PASSWORD_PACKET)?;
             match stream.read_to_end(&mut data) {
-                Err(_) if attempts < 3 => {
-                    attempts += 1;
+                Err(err) if attempts < 3 => {
+                    trace!("error receiving password (attempt: {}): {}", attempts, err);
                 }
                 Err(err) => {
-                    warn!("Couldn't retrieve password: {}", err);
+                    debug!(
+                        "failed receiving password ({} attempts made): {}",
+                        attempts, err
+                    );
                     return Err(err);
                 }
                 Ok(_) => {
@@ -95,8 +101,12 @@ impl Client {
                         .filter(|x| !x.is_empty())
                         .find_map(|x| String::from_utf8(x.to_vec()).ok())
                     {
-                        info!("Retrieved password: '{}'", password);
                         break Ok(password);
+                    } else {
+                        debug!(
+                            "could not parse data: {}",
+                            String::from_utf8_lossy(data.as_slice())
+                        );
                     }
                 }
             }
