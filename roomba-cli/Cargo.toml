@@ -19,3 +19,4 @@ roomba = { path = "../roomba", version = "0.1" }
 structopt = "0.3"
 async-std = "1.6"
 futures-util = "0.3"
+env_logger = "0.7"

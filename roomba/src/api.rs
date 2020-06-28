@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::SystemTime;
 
+const POSSIBLE_PREFIXES: &[&str] = &["iRobot", "Roomba"];
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Message {
@@ -93,10 +95,26 @@ pub struct Info {
     pub attrs: HashMap<String, serde_json::Value>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseRobotIdError;
+
+impl std::fmt::Display for ParseRobotIdError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "could not parse robot ID in hostname")
+    }
+}
+
 impl Info {
-    pub fn robot_id(&self) -> String {
-        self.robot_id
-            .clone()
-            .unwrap_or_else(|| self.hostname.trim_start_matches("iRobot-").to_string())
+    pub fn robot_id(&self) -> Result<String, ParseRobotIdError> {
+        self.robot_id.clone().map(|x| Ok(x)).unwrap_or_else(|| {
+            let mut it = self.hostname.splitn(2, '-');
+            let (prefix, suffix) = (it.next().unwrap(), it.next());
+
+            if !(POSSIBLE_PREFIXES.contains(&prefix) && suffix.is_some()) {
+                return Err(ParseRobotIdError);
+            }
+
+            Ok(suffix.unwrap().to_string())
+        })
     }
 }
