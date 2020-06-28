@@ -5,12 +5,14 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::io::Write;
 use std::net::{TcpStream, UdpSocket};
+use paho_mqtt as mqtt;
+use crate::Result;
 
 const DISCOVERY_PACKET: &[u8] = b"irobotmcs";
 
 pub struct Client {
-    pub mqtt: paho_mqtt::AsyncClient,
-    pub events: Box<dyn Stream<Item = Option<paho_mqtt::message::Message>> + Unpin>,
+    pub mqtt: mqtt::AsyncClient,
+    pub events: Box<dyn Stream<Item = Option<mqtt::message::Message>> + Unpin>,
 }
 
 impl Client {
@@ -19,19 +21,19 @@ impl Client {
         blid: B,
         password: P,
         buffer: usize,
-    ) -> paho_mqtt::Result<Self> {
+    ) -> Result<Self> {
         let uri = format!("ssl://{}:8883", hostname.as_ref());
-        let opts = paho_mqtt::CreateOptionsBuilder::new()
+        let opts = mqtt::CreateOptionsBuilder::new()
             .server_uri(uri)
             .finalize();
 
-        let mut client = paho_mqtt::AsyncClient::new(opts)?;
+        let mut client = mqtt::AsyncClient::new(opts)?;
 
-        let ssl_opts = paho_mqtt::SslOptionsBuilder::new()
+        let ssl_opts = mqtt::SslOptionsBuilder::new()
             .enable_server_cert_auth(false)
             .finalize();
 
-        let conn_opts = paho_mqtt::ConnectOptionsBuilder::new()
+        let conn_opts = mqtt::ConnectOptionsBuilder::new()
             .ssl_options(ssl_opts)
             .user_name(blid)
             .password(password)
@@ -46,26 +48,27 @@ impl Client {
         })
     }
 
-    pub async fn send_message(&self, message: &Message) -> paho_mqtt::Result<()> {
+    pub async fn send_message(&self, message: &Message) -> Result<()> {
         self.mqtt
             .publish(
-                paho_mqtt::MessageBuilder::new()
+                mqtt::MessageBuilder::new()
                     .topic(message.topic())
                     .payload(message.payload())
                     .qos(0)
                     .finalize(),
             )
-            .await
+            .await?;
+        Ok(())
     }
 
-    pub fn find_ip_address() -> std::io::Result<Discovery> {
+    pub fn find_ip_address() -> Result<Discovery> {
         Discovery::new()
     }
 
-    pub fn get_password<H: AsRef<str>>(hostname: H) -> std::io::Result<String> {
+    pub fn get_password<H: AsRef<str>>(hostname: H) -> Result<String> {
         let packet: &[u8] = &[0xf0, 0x05, 0xef, 0xcc, 0x3b, 0x29, 0x00];
 
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+        let mut builder = SslConnector::builder(SslMethod::tls())?;
         builder.set_verify(SslVerifyMode::NONE);
         let connector = builder.build();
 
@@ -83,7 +86,7 @@ impl Client {
                     attempts += 1;
                 }
                 Err(err) => {
-                    return Err(err);
+                    return Err(err.into());
                 }
                 Ok(_) => {
                     if let Some(password) = data
@@ -105,7 +108,7 @@ pub struct Discovery {
 }
 
 impl Discovery {
-    pub fn new() -> std::io::Result<Discovery> {
+    pub fn new() -> Result<Discovery> {
         let socket = UdpSocket::bind("0.0.0.0:5678")?;
         socket.set_broadcast(true)?;
         socket.set_read_timeout(Some(std::time::Duration::from_secs(3)))?;
@@ -118,7 +121,7 @@ impl Discovery {
 }
 
 impl Iterator for Discovery {
-    type Item = std::io::Result<Info>;
+    type Item = Result<Info>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut data = [0; 800];
@@ -129,12 +132,12 @@ impl Iterator for Discovery {
                 .send_to(DISCOVERY_PACKET, "255.255.255.255:5678")
             {
                 Err(err) => {
-                    return Some(Err(err));
+                    return Some(Err(err.into()));
                 }
                 Ok(_) => loop {
                     match self.socket.recv(&mut data) {
                         Err(err) => {
-                            return Some(Err(err));
+                            return Some(Err(err.into()));
                         }
                         Ok(length) => {
                             if &data[..length] != DISCOVERY_PACKET {

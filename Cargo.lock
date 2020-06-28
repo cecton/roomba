@@ -591,6 +591,7 @@ dependencies = [
  "paho-mqtt",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
