@@ -7,6 +7,12 @@ use std::io::Write;
 use structopt::StructOpt;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Default to "error" log level unless overridden by environment
+    env_logger::init_from_env(
+        env_logger::Env::default()
+            .filter_or("RUST_LOG", "error")
+    );
+
     let cli = cli::Cli::from_args();
 
     match cli.command {

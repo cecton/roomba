@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::io::Write;
 use std::net::{TcpStream, UdpSocket};
+use std::str;
 
 const DISCOVERY_PACKET: &[u8] = b"irobotmcs";
 
@@ -69,7 +70,9 @@ impl Client {
         builder.set_verify(SslVerifyMode::NONE);
         let connector = builder.build();
 
-        let socket = TcpStream::connect(format!("{}:8883", hostname.as_ref()))?;
+        let uri = format!("{}:8883", hostname.as_ref());
+        debug!("Attempting SSL conection to '{}'", uri);
+        let socket = TcpStream::connect(uri)?;
         socket.set_read_timeout(Some(std::time::Duration::from_secs(3)))?;
         let mut stream = connector.connect("ignore", socket).unwrap();
 
@@ -83,6 +86,7 @@ impl Client {
                     attempts += 1;
                 }
                 Err(err) => {
+                    warn!("Couldn't retrieve password: {}", err);
                     return Err(err);
                 }
                 Ok(_) => {
@@ -91,6 +95,7 @@ impl Client {
                         .filter(|x| !x.is_empty())
                         .find_map(|x| String::from_utf8(x.to_vec()).ok())
                     {
+                        info!("Retrieved password: '{}'", password);
                         break Ok(password);
                     }
                 }
@@ -134,16 +139,29 @@ impl Iterator for Discovery {
                 Ok(_) => loop {
                     match self.socket.recv(&mut data) {
                         Err(err) => {
+                            warn!("Error receiving discovery packet: {}", err);
                             return Some(Err(err));
                         }
                         Ok(length) => {
                             if &data[..length] != DISCOVERY_PACKET {
-                                if let Ok(info) = serde_json::from_slice::<Info>(&data[..length]) {
-                                    let robot_id = info.robot_id();
+                                match str::from_utf8(&data[..length]) {
+                                    Ok(s) => trace!("Discovery received: {}", s),
+                                    Err(_) => warn!("Discovery should return a JSON string."),
+                                }
+                                match serde_json::from_slice::<Info>(&data[..length]) {
+                                    Ok(info) => {
+                                        let robot_id = info.robot_id();
 
-                                    if !self.found.contains(&robot_id) {
-                                        self.found.insert(robot_id);
-                                        return Some(Ok(info));
+                                        if !self.found.contains(&robot_id) {
+                                            self.found.insert(robot_id);
+                                            return Some(Ok(info));
+                                        }
+                                    },
+                                    Err(err) => {
+                                        warn!("Error parsing discovery JSON: {}", err);
+                                        // TODO: We should consider defining an error type
+                                        // for the library that includes io, mqtt, json, etc.
+                                        //return Some(Err(err));
                                     }
                                 }
                             }
