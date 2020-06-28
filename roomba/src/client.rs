@@ -128,40 +128,36 @@ impl Iterator for Discovery {
     fn next(&mut self) -> Option<Self::Item> {
         let mut data = [0; 800];
 
-        loop {
-            match self
-                .socket
-                .send_to(DISCOVERY_PACKET, "255.255.255.255:5678")
-            {
-                Err(err) => {
-                    return Some(Err(err));
-                }
-                Ok(_) => loop {
-                    match self.socket.recv(&mut data) {
-                        Err(err) => {
-                            warn!("Error receiving discovery packet: {}", err);
-                            return Some(Err(err));
-                        }
-                        Ok(length) => {
-                            if &data[..length] != DISCOVERY_PACKET {
-                                match str::from_utf8(&data[..length]) {
-                                    Ok(s) => trace!("Discovery received: {}", s),
-                                    Err(_) => warn!("Discovery should return a JSON string."),
-                                }
-                                match serde_json::from_slice::<Info>(&data[..length]) {
-                                    Ok(info) => {
-                                        if !self.found.contains(&info.ip) {
-                                            self.found.insert(info.ip.clone());
-                                            return Some(Ok(info));
-                                        }
-                                    }
-                                    Err(err) => warn!("Error parsing discovery JSON: {}", err),
-                                }
-                            }
-                        }
-                    }
-                },
+        trace!("starting robot discovery...");
+
+        match self
+            .socket
+            .send_to(DISCOVERY_PACKET, "255.255.255.255:5678")
+        {
+            Err(err) => {
+                debug!("error sending discovery packet: {}", err);
+                Some(Err(err))
             }
+            Ok(_) => loop {
+                match self.socket.recv(&mut data) {
+                    Err(err) => {
+                        debug!("error receiving discovery packet: {}", err);
+                        break Some(Err(err));
+                    }
+                    Ok(length) if &data[..length] == DISCOVERY_PACKET => continue,
+                    Ok(length) => match serde_json::from_slice::<Info>(&data[..length]) {
+                        Ok(info) if self.found.contains(&info.ip) => continue,
+                        Ok(info) => {
+                            self.found.insert(info.ip.clone());
+                            break Some(Ok(info));
+                        }
+                        Err(err) => {
+                            debug!("error parsing discovery data: {}", err);
+                            continue;
+                        }
+                    },
+                }
+            },
         }
     }
 }
