@@ -67,7 +67,7 @@ impl Client {
     pub fn get_password<H: AsRef<str>>(hostname: H) -> std::io::Result<String> {
         trace!("starting procedure to get a password...");
 
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+        let mut builder = SslConnector::builder(SslMethod::tls())?;
         builder.set_verify(SslVerifyMode::NONE);
         let connector = builder.build();
 
@@ -76,7 +76,9 @@ impl Client {
         let socket = TcpStream::connect(uri)?;
         socket.set_read_timeout(Some(std::time::Duration::from_secs(3)))?;
         trace!("starting TLS transaction...");
-        let mut stream = connector.connect("ignore", socket).unwrap();
+        let mut stream = connector
+            .connect("ignore", socket)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))?;
 
         let mut attempts = 0;
         loop {

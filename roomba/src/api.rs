@@ -106,7 +106,7 @@ impl std::fmt::Display for ParseRobotIdError {
 
 impl Info {
     pub fn robot_id(&self) -> Result<String, ParseRobotIdError> {
-        self.robot_id.clone().map(|x| Ok(x)).unwrap_or_else(|| {
+        self.robot_id.clone().map(Ok).unwrap_or_else(|| {
             let mut it = self.hostname.splitn(2, '-');
             let (prefix, suffix) = (it.next().unwrap(), it.next());
 
