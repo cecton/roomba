@@ -48,7 +48,7 @@ Before continuing, please run a clean on a specific room with the Roomba app.
 Then:
 
 ```
-roomba-s9plus-cli command ssl://<roomba_ip>:8883 <blid> <password>
+roomba-s9plus-cli command <roomba_ip> <blid> <password>
 ```
 
 **Note:** Use `find-ip` to get the blid and `get-password` to get the password.
@@ -61,7 +61,7 @@ JSON.
 ### Run the command
 
 ```
-roomba-s9plus-cli command ssl://<roomba_ip>:8883 \
+roomba-s9plus-cli command <roomba_ip> \
     <blid> <password> start-regions --ordered <user_pmapv_id> <pmap_id> 17
 # 17 is the ID of the room (region_id)
 ```
