@@ -15,4 +15,4 @@ paho-mqtt = { git = "https://github.com/eclipse/paho.mqtt.rust.git", rev = "47eb
 openssl = "0.10"
 futures-core = "0.3"
 log = "0.4"
-
+futures = "0.3"

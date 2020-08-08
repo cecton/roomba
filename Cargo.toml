@@ -2,4 +2,5 @@
 members = [
 	"roomba",
 	"roomba-cli",
+	"roomba-tui",
 ]
