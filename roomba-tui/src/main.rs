@@ -3,7 +3,8 @@ use std::thread;
 
 use futures::select;
 use futures::stream::StreamExt;
-use roomba::Client;
+use roomba::{api, Client};
+use serde::Deserialize;
 use std::{error::Error, io};
 use termion::input::TermRead;
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
@@ -16,41 +17,38 @@ use tui::{
     Terminal,
 };
 
+#[derive(Deserialize)]
+struct Config {
+    hostname: String,
+    username: String,
+    password: String,
+    pmap_id: String,
+    user_pmapv_id: String,
+    rooms: Vec<Room>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Room {
+    name: String,
+    #[serde(flatten)]
+    region: api::Region,
+}
+
+impl std::fmt::Display for Room {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
 struct App {
     items: StatefulList,
     events: Vec<(Vec<String>, String)>,
 }
 
 impl App {
-    fn new() -> App {
+    fn new(rooms: Vec<Room>) -> App {
         App {
-            items: StatefulList::with_items(vec![
-                ("Item0".to_string(), false),
-                ("Item1".to_string(), false),
-                ("Item2".to_string(), false),
-                ("Item3".to_string(), false),
-                ("Item4".to_string(), false),
-                ("Item5".to_string(), false),
-                ("Item6".to_string(), false),
-                ("Item7".to_string(), false),
-                ("Item8".to_string(), false),
-                ("Item9".to_string(), false),
-                ("Item10".to_string(), false),
-                ("Item11".to_string(), false),
-                ("Item12".to_string(), false),
-                ("Item13".to_string(), false),
-                ("Item14".to_string(), false),
-                ("Item15".to_string(), false),
-                ("Item16".to_string(), false),
-                ("Item17".to_string(), false),
-                ("Item18".to_string(), false),
-                ("Item19".to_string(), false),
-                ("Item20".to_string(), false),
-                ("Item21".to_string(), false),
-                ("Item22".to_string(), false),
-                ("Item23".to_string(), false),
-                ("Item24".to_string(), false),
-            ]),
+            items: StatefulList::with_items(rooms.into_iter().map(|x| (x, false)).collect()),
             events: vec![],
         }
     }
@@ -91,10 +89,13 @@ impl App {
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let hostname = "xxxxxxxxxx";
-    let username = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-    let password = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-    let mut client = Client::new(hostname, username, password, 0).await?;
+    let toml_str = std::fs::read_to_string(format!(
+        "{}/.config/roomba.toml",
+        std::env::var("HOME").unwrap()
+    ))
+    .unwrap();
+    let config: Config = toml::from_str(toml_str.as_str()).unwrap();
+    let mut client = Client::new(&config.hostname, &config.username, &config.password, 0).await?;
 
     // Terminal initialization
     let stdout = io::stdout().into_raw_mode()?;
@@ -106,7 +107,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut events = events();
 
     // App
-    let mut app = App::new();
+    let mut app = App::new(config.rooms.clone());
 
     loop {
         terminal.draw(|f| {
@@ -169,7 +170,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             if let Some(key) = ev {
                 match key {
                     Key::Char('q') => {
-                        return true;
+                        return (true, None);
                     }
                     Key::Left => {
                         app.items.unselect();
@@ -190,33 +191,54 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         app.items.move_down();
                     }
                     Key::Char('\n') => {
-                        app.command(
-                            app.items
-                                .items
-                                .iter()
-                                .filter_map(|(room, selected)| {
+                        let rooms: Vec<_> = app
+                            .items
+                            .items
+                            .iter()
+                            .filter_map(
+                                |(room, selected)| {
                                     if *selected {
-                                        Some(room.to_string())
+                                        Some(room.clone())
                                     } else {
                                         None
                                     }
-                                })
+                                },
+                            )
+                            .collect();
+                        app.command(
+                            rooms
+                                .iter()
+                                .enumerate()
+                                .map(|(i, room)| format!("{:>2}. {}", i + 1, room))
                                 .collect(),
                         );
+                        let command = api::Command::Start;
+                        let extra = api::Extra::StartRegions {
+                            ordered: 1,
+                            pmap_id: config.pmap_id.clone(),
+                            user_pmapv_id: config.user_pmapv_id.clone(),
+                            regions: rooms.iter().map(|x| x.region.clone()).collect(),
+                        };
+                        let message = api::Message::new_command(command, Some(extra));
+                        return (false, Some(message));
                     }
                     _ => {}
                 }
             } else {
-                return true;
+                return (true, None);
             }
 
-            false
+            (false, None)
         };
 
         select! {
             ev = events.next() => {
-                if handle_ev(ev) {
+                let (res, message) = handle_ev(ev);
+                if res {
                     break;
+                }
+                if let Some(message) = message {
+                    client.send_message(&message).await.unwrap();
                 }
             },
             ev = client.events.next() => {
@@ -255,11 +277,11 @@ use tui::widgets::ListState;
 
 pub struct StatefulList {
     pub state: ListState,
-    pub items: Vec<(String, bool)>,
+    pub items: Vec<(Room, bool)>,
 }
 
 impl StatefulList {
-    pub fn with_items(items: Vec<(String, bool)>) -> StatefulList {
+    pub fn with_items(items: Vec<(Room, bool)>) -> StatefulList {
         StatefulList {
             state: ListState::default(),
             items,
