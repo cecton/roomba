@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         std::env::var("HOME").unwrap()
     ))
     .unwrap();
-    let config: Config = toml::from_str(toml_str.as_str()).unwrap();
+    let mut config: Config = toml::from_str(toml_str.as_str()).unwrap();
     let mut client = Client::new(&config.hostname, &config.username, &config.password, 0).await?;
 
     // Terminal initialization
@@ -107,6 +107,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut events = events();
 
     // App
+    config.rooms.sort_by(|a, b| a.name.cmp(&b.name));
     let mut app = App::new(config.rooms.clone());
 
     loop {
