@@ -46,8 +46,15 @@ pub struct AuthenticatedCommand {
 
 #[derive(StructOpt, Debug)]
 pub enum UnauthenticatedCommand {
-    FindIp,
-    GetPassword { hostname: String },
+    FindIp {
+        #[structopt(long)]
+        no_save: bool,
+    },
+    GetPassword {
+        hostname: Option<String>,
+        #[structopt(long)]
+        no_save: bool,
+    },
 }
 
 impl Command {
