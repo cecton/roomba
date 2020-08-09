@@ -116,6 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Password: {}", password);
 
             if !no_save {
+                config.hostname = Some(hostname.to_string());
                 config.password = Some(password);
                 save_config(config);
             }
