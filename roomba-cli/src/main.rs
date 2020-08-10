@@ -16,7 +16,7 @@ struct Config {
     password: Option<String>,
     pmap_id: Option<String>,
     user_pmapv_id: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     rooms: Vec<Room>,
 }
 
@@ -118,8 +118,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             println!(
-                "Warning: please hold the Home button for 2 seconds and check that the ring led is \
-                blinking blue."
+                "Warning: please hold the Home button for 2 seconds and check that the ring led \
+                is blinking blue."
             );
 
             let password = loop {
@@ -142,36 +142,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             Ok(())
         }
-        cli::AnyCommand::Authenticated(cli) => {
-            block_on(async {
-                let mut client = Client::new(
-                unwrap!(config.hostname, "Missing hostname in the configuration. Please run `{exe} find-ip` first"),
-                unwrap!(config.username, "Missing username in the configuration. Please run `{exe} find-ip` first"),
-                unwrap!(config.password, "Missing password in the configuration. Please run `{exe} get-password` first"),
+        cli::AnyCommand::Authenticated(cli) => block_on(async {
+            let mut client = Client::new(
+                unwrap!(
+                    config.hostname,
+                    "Missing hostname in the configuration. Please run `{exe} find-ip` first"
+                ),
+                unwrap!(
+                    config.username,
+                    "Missing username in the configuration. Please run `{exe} find-ip` first"
+                ),
+                unwrap!(
+                    config.password,
+                    "Missing password in the configuration. Please run `{exe} get-password` first"
+                ),
                 0,
-            ).await?;
+            )
+            .await?;
 
-                match cli.command {
-                    Some(command) => {
-                        let (command, extra) = command.into_command_with_extra(
-                        unwrap!(config.pmap_id, "Missing pmap_id in the configuration. Please run `{exe} TODO` first"),
-                        unwrap!(config.user_pmapv_id, "Missing user_pmapv_id in the configuration. Please run `{exe} TODO` first"),
+            match cli.command {
+                Some(command) => {
+                    let (command, extra) = command.into_command_with_extra(
+                        unwrap!(
+                            config.pmap_id,
+                            "Missing pmap_id in the configuration. Please run `{exe} TODO` first"
+                        ),
+                        unwrap!(
+                            config.user_pmapv_id,
+                            "Missing user_pmapv_id in the configuration. Please run `{exe} TODO` \
+                            first"
+                        ),
                     );
-                        let message = api::Message::new_command(command, extra);
+                    let message = api::Message::new_command(command, extra);
 
-                        client.send_message(&message).await?;
-                    }
-                    None => {
-                        while let Some(maybe_msg) = client.events.next().await {
-                            if let Some(msg) = maybe_msg {
-                                println!("{}", msg);
-                            }
+                    client.send_message(&message).await?;
+                }
+                None => {
+                    while let Some(maybe_msg) = client.events.next().await {
+                        if let Some(msg) = maybe_msg {
+                            println!("{}", msg);
                         }
                     }
                 }
+            }
 
-                Ok(())
-            })
-        }
+            Ok(())
+        }),
     }
 }
