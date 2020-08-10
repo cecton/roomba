@@ -55,15 +55,15 @@ pub enum UnauthenticatedCommand {
 impl Command {
     pub fn into_command_with_extra(
         self,
-        pmap_id: String,
-        user_pmapv_id: String,
+        pmap_id: &str,
+        user_pmapv_id: &str,
     ) -> (api::Command, Option<api::Extra>) {
         match self {
             Command::StartRegions { ordered, regions } => (
                 api::Command::Start,
                 Some(api::Extra::StartRegions {
-                    pmap_id,
-                    user_pmapv_id,
+                    pmap_id: pmap_id.to_string(),
+                    user_pmapv_id: user_pmapv_id.to_string(),
                     ordered: ordered.into(),
                     regions,
                 }),

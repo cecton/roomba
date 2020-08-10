@@ -1,7 +1,7 @@
 mod cli;
+mod tui;
 
 use async_std::task::block_on;
-use futures::stream::StreamExt;
 use roomba::{api, Client};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -25,6 +25,12 @@ pub struct Room {
     name: String,
     #[serde(flatten)]
     region: api::Region,
+}
+
+impl std::fmt::Display for Room {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
 }
 
 macro_rules! unwrap {
@@ -160,29 +166,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
 
+            let pmap_id = unwrap!(
+                config.pmap_id.as_ref(),
+                "Missing pmap_id in the configuration. Please run `{exe} TODO` first"
+            );
+            let user_pmapv_id = unwrap!(
+                config.user_pmapv_id.as_ref(),
+                "Missing user_pmapv_id in the configuration. Please run `{exe} TODO` \
+                            first"
+            );
+
             match cli.command {
                 Some(command) => {
-                    let (command, extra) = command.into_command_with_extra(
-                        unwrap!(
-                            config.pmap_id,
-                            "Missing pmap_id in the configuration. Please run `{exe} TODO` first"
-                        ),
-                        unwrap!(
-                            config.user_pmapv_id,
-                            "Missing user_pmapv_id in the configuration. Please run `{exe} TODO` \
-                            first"
-                        ),
-                    );
+                    let (command, extra) = command.into_command_with_extra(pmap_id, user_pmapv_id);
                     let message = api::Message::new_command(command, extra);
 
                     client.send_message(&message).await?;
                 }
                 None => {
-                    while let Some(maybe_msg) = client.events.next().await {
-                        if let Some(msg) = maybe_msg {
-                            println!("{}", msg);
-                        }
-                    }
+                    tui::main(&mut client, config.rooms, pmap_id, user_pmapv_id).await?;
                 }
             }
 

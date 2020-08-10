@@ -767,10 +767,14 @@ dependencies = [
  "dirs",
  "env_logger",
  "futures 0.3.5",
+ "paho-mqtt",
  "roomba",
  "serde",
+ "serde_json",
  "structopt",
+ "termion",
  "toml",
+ "tui",
 ]
 
 [[package]]
