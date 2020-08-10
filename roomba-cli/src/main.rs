@@ -27,6 +27,22 @@ pub struct Room {
     region: api::Region,
 }
 
+macro_rules! unwrap {
+    ($option:expr, $message:expr) => {{
+        if $option.is_none() {
+            if let Ok(path) = std::env::current_exe() {
+                eprintln!($message, exe = path.display());
+            } else {
+                eprintln!($message, exe = env!("CARGO_PKG_NAME"));
+            }
+
+            std::process::exit(1);
+        }
+
+        $option.unwrap()
+    }};
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Default to "error" log level unless overridden by environment
     env_logger::init_from_env(env_logger::Env::default().filter_or("RUST_LOG", "error"));
@@ -95,7 +111,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }) => {
             let hostname = match hostname {
                 Some(ref x) => x,
-                None => config.hostname.as_ref().ok_or_else(|| format!("Missing hostname in the configuration. Please run `{} find-ip --save` first", std::env::current_exe().unwrap_or_default().display()))?,
+                None => unwrap!(
+                    config.hostname.as_ref(),
+                    "Missing hostname in the configuration. Please run `{exe} find-ip` first"
+                ),
             };
 
             println!(
@@ -123,26 +142,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             Ok(())
         }
-        cli::AnyCommand::Authenticated(cli) => block_on(async {
-            let mut client = Client::new(cli.hostname, cli.username, cli.password, 0).await?;
+        cli::AnyCommand::Authenticated(cli) => {
+            block_on(async {
+                let mut client = Client::new(
+                unwrap!(config.hostname, "Missing hostname in the configuration. Please run `{exe} find-ip` first"),
+                unwrap!(config.username, "Missing username in the configuration. Please run `{exe} find-ip` first"),
+                unwrap!(config.password, "Missing password in the configuration. Please run `{exe} get-password` first"),
+                0,
+            ).await?;
 
-            match cli.command {
-                Some(command) => {
-                    let (command, extra) = command.into_command_with_extra();
-                    let message = api::Message::new_command(command, extra);
+                match cli.command {
+                    Some(command) => {
+                        let (command, extra) = command.into_command_with_extra(
+                        unwrap!(config.pmap_id, "Missing pmap_id in the configuration. Please run `{exe} TODO` first"),
+                        unwrap!(config.user_pmapv_id, "Missing user_pmapv_id in the configuration. Please run `{exe} TODO` first"),
+                    );
+                        let message = api::Message::new_command(command, extra);
 
-                    client.send_message(&message).await?;
-                }
-                None => {
-                    while let Some(maybe_msg) = client.events.next().await {
-                        if let Some(msg) = maybe_msg {
-                            println!("{}", msg);
+                        client.send_message(&message).await?;
+                    }
+                    None => {
+                        while let Some(maybe_msg) = client.events.next().await {
+                            if let Some(msg) = maybe_msg {
+                                println!("{}", msg);
+                            }
                         }
                     }
                 }
-            }
 
-            Ok(())
-        }),
+                Ok(())
+            })
+        }
     }
 }
