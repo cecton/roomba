@@ -16,6 +16,34 @@ use tui::{
     Terminal,
 };
 
+macro_rules! safe_json_traversal {
+    ($var:expr => $key:expr => $($tokens:tt)=>+) => {{
+        let object = safe_json_traversal!($var => $key);
+
+        safe_json_traversal!(with_result object => $($tokens)=>+)
+    }};
+    ($var:expr => [$index:expr]) => {{
+        $var.as_array()
+            .ok_or_else(|| format!("Not an object: {}", stringify!($var)))
+            .and_then(|x| x.get($index)
+                .ok_or_else(|| format!("Key {:?} not found.", stringify!($index))))
+    }};
+    ($var:expr => $key:expr) => {{
+        $var.as_object()
+            .ok_or_else(|| format!("Not an object: {}", stringify!($var)))
+            .and_then(|x| x.get(stringify!($key))
+                .ok_or_else(|| format!("Key {:?} not found.", stringify!($key))))
+    }};
+    (with_result $var:expr => $key:expr => $($tokens:tt)=>+) => {{
+        let object = safe_json_traversal!(with_result $var => $key);
+
+        safe_json_traversal!(with_result object => $($tokens)=>+)
+    }};
+    (with_result $var:expr => $key:expr) => {{
+        $var.and_then(|object| safe_json_traversal!(object => $key))
+    }};
+}
+
 struct App {
     items: StatefulList,
     events: Vec<(Vec<String>, String)>,
@@ -32,26 +60,14 @@ impl App {
     fn update(&mut self, event: paho_mqtt::message::Message) {
         let parser = |input| -> Result<Vec<String>, Box<dyn Error>> {
             let payload = serde_json::from_str::<serde_json::Value>(input)?;
-            let status = payload
-                .as_object()
-                .ok_or("not an object")?
-                .get("state")
-                .ok_or("missing state")?
-                .as_object()
-                .ok_or("not an object")?;
-            let reported = status
-                .get("reported")
-                .ok_or("missing reported")?
-                .as_object()
-                .ok_or("not an object")?;
-            let battery = reported.get("batPct").ok_or("missing batPct")?;
-            let last_command = reported.get("lastCommand").ok_or("missing lastCommand")?;
-            let pmaps = reported.get("pmaps").ok_or("missing pmaps")?;
+            let battery = safe_json_traversal!(payload => state => reported => batPct);
+            let last_command = safe_json_traversal!(payload => state => reported => lastCommand);
+            let pmaps = safe_json_traversal!(payload => state => reported => pmaps);
 
             Ok(vec![
-                format!("battery: {}%", battery),
-                format!("last command: {}", last_command),
-                format!("pmaps: {}", pmaps),
+                format!("battery: {}%", battery.map(|x| x.to_string()).unwrap_or_else(|e| e)),
+                format!("last command: {}", last_command.map(|x| x.to_string()).unwrap_or_else(|e| e)),
+                format!("pmaps: {}", pmaps.map(|x| x.to_string()).unwrap_or_else(|e| e)),
             ])
         };
         let message = parser(&event.payload_str()).unwrap_or_else(|err| vec![err.to_string()]);
