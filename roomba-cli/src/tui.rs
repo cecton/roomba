@@ -78,13 +78,8 @@ impl<'a> App<'a> {
         self.events.insert(0, (message, subject.to_string()));
     }
 
-    fn log_event(&mut self, event: paho_mqtt::message::Message) {
-        let payload =
-            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload_str()) {
-                payload
-            } else {
-                return;
-            };
+    fn log_event(&mut self, event: paho_mqtt::message::Message) -> serde_json::Result<()> {
+        let payload = serde_json::from_str::<serde_json::Value>(&event.payload_str())?;
 
         if let Ok(battery) = safe_json_traversal!(payload => state => reported => batPct) {
             self.log(vec![format!("{}%", battery)], "BATTERY");
@@ -92,12 +87,16 @@ impl<'a> App<'a> {
 
         if let Ok(last_command) = safe_json_traversal!(payload => state => reported => lastCommand)
         {
-            self.log(vec![format!("{}", last_command)], "LAST_COMMAND");
+            let pretty = serde_json::to_string_pretty(last_command)?;
+            self.log(pretty.lines().map(Into::into).collect(), "LAST_COMMAND");
         }
 
         if let Ok(pmaps) = safe_json_traversal!(payload => state => reported => pmaps) {
-            self.log(vec![format!("{}", pmaps)], "PMAPS");
+            let pretty = serde_json::to_string_pretty(pmaps)?;
+            self.log(pretty.lines().map(Into::into).collect(), "PMAPS");
         }
+
+        Ok(())
     }
 
     fn command(&mut self, command: Vec<String>) {
@@ -127,7 +126,8 @@ impl<'a> App<'a> {
                 },
                 ev = self.client.events.next() => {
                     if let Some(ev) = ev.flatten() {
-                        self.log_event(ev);
+                        // TODO: log error in logger, not in user interface
+                        let _ = self.log_event(ev);
                     } else {
                         break
                     }
