@@ -7,6 +7,7 @@ use std::thread;
 use std::{error::Error, io};
 use termion::input::TermRead;
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
+use tui::widgets::ListState;
 use tui::{
     backend::TermionBackend,
     layout::{Constraint, Corner, Direction, Layout},
@@ -44,69 +45,111 @@ macro_rules! safe_json_traversal {
     }};
 }
 
-struct App {
-    items: StatefulList,
+pub struct App<'a> {
+    client: &'a mut Client,
     events: Vec<(Vec<String>, String)>,
+    items: Vec<(Room, bool)>,
+    pmap_id: String,
+    running: bool,
+    state: ListState,
+    user_pmapv_id: String,
 }
 
-impl App {
-    fn new(rooms: Vec<Room>) -> App {
-        App {
-            items: StatefulList::with_items(rooms.into_iter().map(|x| (x, false)).collect()),
+impl<'a> App<'a> {
+    pub fn new(client: &'a mut Client, rooms: &[Room], pmap_id: &str, user_pmapv_id: &str) -> Self {
+        let mut rooms = rooms.to_vec();
+        rooms.sort_by(|a, b| a.name.cmp(&b.name));
+
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        Self {
+            client,
             events: vec![],
+            items: rooms.into_iter().map(|x| (x, false)).collect(),
+            pmap_id: pmap_id.to_string(),
+            running: true,
+            state,
+            user_pmapv_id: user_pmapv_id.to_string(),
         }
     }
 
-    fn update(&mut self, event: paho_mqtt::message::Message) {
-        let parser = |input| -> Result<Vec<String>, Box<dyn Error>> {
-            let payload = serde_json::from_str::<serde_json::Value>(input)?;
-            let battery = safe_json_traversal!(payload => state => reported => batPct);
-            let last_command = safe_json_traversal!(payload => state => reported => lastCommand);
-            let pmaps = safe_json_traversal!(payload => state => reported => pmaps);
+    fn log(&mut self, message: Vec<String>, subject: &str) {
+        self.events.insert(0, (message, subject.to_string()));
+    }
 
-            Ok(vec![
-                format!("battery: {}%", battery.map(|x| x.to_string()).unwrap_or_else(|e| e)),
-                format!("last command: {}", last_command.map(|x| x.to_string()).unwrap_or_else(|e| e)),
-                format!("pmaps: {}", pmaps.map(|x| x.to_string()).unwrap_or_else(|e| e)),
-            ])
-        };
-        let message = parser(&event.payload_str()).unwrap_or_else(|err| vec![err.to_string()]);
-        self.events.insert(0, (message, event.topic().to_string()));
+    fn log_event(&mut self, event: paho_mqtt::message::Message) {
+        let payload =
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&event.payload_str()) {
+                payload
+            } else {
+                return;
+            };
+
+        if let Ok(battery) = safe_json_traversal!(payload => state => reported => batPct) {
+            self.log(vec![format!("{}%", battery)], "BATTERY");
+        }
+
+        if let Ok(last_command) = safe_json_traversal!(payload => state => reported => lastCommand)
+        {
+            self.log(vec![format!("{}", last_command)], "LAST_COMMAND");
+        }
+
+        if let Ok(pmaps) = safe_json_traversal!(payload => state => reported => pmaps) {
+            self.log(vec![format!("{}", pmaps)], "PMAPS");
+        }
     }
 
     fn command(&mut self, command: Vec<String>) {
         self.events.insert(0, (command, "command".to_string()));
     }
-}
 
-pub async fn main(
-    client: &mut Client,
-    mut rooms: Vec<Room>,
-    pmap_id: &str,
-    user_pmapv_id: &str,
-) -> Result<(), Box<dyn Error>> {
-    // Terminal initialization
-    let stdout = io::stdout().into_raw_mode()?;
-    let stdout = MouseTerminal::from(stdout);
-    let stdout = AlternateScreen::from(stdout);
-    let backend = TermionBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    pub async fn main_loop(mut self) -> Result<(), Box<dyn Error>> {
+        // Terminal initialization
+        let stdout = io::stdout().into_raw_mode()?;
+        let stdout = MouseTerminal::from(stdout);
+        let stdout = AlternateScreen::from(stdout);
+        let backend = TermionBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
 
-    let mut events = events();
+        let mut events = events();
 
-    // App
-    rooms.sort_by(|a, b| a.name.cmp(&b.name));
-    let mut app = App::new(rooms);
+        while self.running {
+            self.render(&mut terminal)?;
 
-    loop {
+            select! {
+                ev = events.next() => {
+                    if let Some(event) = ev {
+                        self.handle_event(event).await;
+                    } else {
+                        break
+                    }
+                },
+                ev = self.client.events.next() => {
+                    if let Some(ev) = ev.flatten() {
+                        self.log_event(ev);
+                    } else {
+                        break
+                    }
+                },
+                complete => break,
+            }
+        }
+
+        Ok(())
+    }
+
+    fn render<B: tui::backend::Backend>(
+        &mut self,
+        terminal: &mut Terminal<B>,
+    ) -> std::io::Result<()> {
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(25), Constraint::Percentage(75)].as_ref())
                 .split(f.size());
 
-            let items: Vec<ListItem> = app
-                .items
+            let items: Vec<ListItem> = self
                 .items
                 .iter()
                 .enumerate()
@@ -126,9 +169,9 @@ pub async fn main(
             let items = List::new(items)
                 .block(Block::default().borders(Borders::ALL).title("Rooms"))
                 .highlight_style(Style::default().fg(Color::LightYellow));
-            f.render_stateful_widget(items, chunks[0], &mut app.items.state);
+            f.render_stateful_widget(items, chunks[0], &mut self.state);
 
-            let events: Vec<ListItem> = app
+            let events: Vec<ListItem> = self
                 .events
                 .iter()
                 .map(|(evt, level)| {
@@ -155,94 +198,126 @@ pub async fn main(
             f.render_widget(events_list, chunks[1]);
         })?;
 
-        let mut handle_ev = |ev| {
-            if let Some(key) = ev {
-                match key {
-                    Key::Char('q') => {
-                        return (true, None);
-                    }
-                    Key::Left => {
-                        app.items.unselect();
-                    }
-                    Key::Down => {
-                        app.items.next();
-                    }
-                    Key::Up => {
-                        app.items.previous();
-                    }
-                    Key::Char(' ') => {
-                        app.items.select();
-                    }
-                    Key::Char('+') => {
-                        app.items.move_up();
-                    }
-                    Key::Char('-') => {
-                        app.items.move_down();
-                    }
-                    Key::Char('\n') => {
-                        let rooms: Vec<_> = app
-                            .items
-                            .items
-                            .iter()
-                            .filter_map(
-                                |(room, selected)| {
-                                    if *selected {
-                                        Some(room.clone())
-                                    } else {
-                                        None
-                                    }
-                                },
-                            )
-                            .collect();
-                        app.command(
-                            rooms
-                                .iter()
-                                .enumerate()
-                                .map(|(i, room)| format!("{:>2}. {}", i + 1, room))
-                                .collect(),
-                        );
-                        let command = api::Command::Start;
-                        let extra = api::Extra::StartRegions {
-                            ordered: 1,
-                            pmap_id: pmap_id.to_string(),
-                            user_pmapv_id: user_pmapv_id.to_string(),
-                            regions: rooms.iter().map(|x| x.region.clone()).collect(),
-                        };
-                        let message = api::Message::new_command(command, Some(extra));
-                        return (false, Some(message));
-                    }
-                    _ => {}
-                }
-            } else {
-                return (true, None);
+        Ok(())
+    }
+
+    async fn handle_event(&mut self, event: termion::event::Key) {
+        match event {
+            Key::Char('q') => {
+                self.running = false;
             }
-
-            (false, None)
-        };
-
-        select! {
-            ev = events.next() => {
-                let (res, message) = handle_ev(ev);
-                if res {
-                    break;
-                }
-                if let Some(message) = message {
-                    client.send_message(&message).await.unwrap();
-                }
-            },
-            ev = client.events.next() => {
-                if let Some(ev) = ev.flatten() {
-                    app.update(ev);
-                }
-            },
-            complete => break,
+            Key::Down => self.next(),
+            Key::Up => self.previous(),
+            Key::Char(' ') => self.toggle(),
+            Key::Char('+') => self.move_up(),
+            Key::Char('-') => self.move_down(),
+            Key::Char('\n') => self.start_job().await,
+            _ => {}
         }
     }
 
-    Ok(())
+    async fn start_job(&mut self) {
+        let rooms: Vec<_> = self
+            .items
+            .iter()
+            .filter_map(
+                |(room, selected)| {
+                    if *selected {
+                        Some(room.clone())
+                    } else {
+                        None
+                    }
+                },
+            )
+            .collect();
+        self.command(
+            rooms
+                .iter()
+                .enumerate()
+                .map(|(i, room)| format!("{:>2}. {}", i + 1, room))
+                .collect(),
+        );
+        let command = api::Command::Start;
+        let extra = api::Extra::StartRegions {
+            ordered: 1,
+            pmap_id: self.pmap_id.clone(),
+            user_pmapv_id: self.user_pmapv_id.clone(),
+            regions: rooms.iter().map(|x| x.region.clone()).collect(),
+        };
+        let message = api::Message::new_command(command, Some(extra));
+        self.client
+            .send_message(&message)
+            .await
+            .unwrap_or_else(|err| {
+                self.log(
+                    vec![
+                        "Could not send message to the device:".to_string(),
+                        err.to_string(),
+                    ],
+                    "ERROR",
+                );
+            });
+    }
+
+    fn next(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i >= self.items.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    fn previous(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.items.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    fn toggle(&mut self) {
+        if let Some(i) = self.state.selected() {
+            self.items[i].1 ^= true;
+            self.items.sort_by_key(|x| !x.1);
+        }
+    }
+
+    fn move_up(&mut self) {
+        if let Some(i) = self.state.selected() {
+            if i > 0 && self.items[i].1 && self.items[i - 1].1 {
+                let elem = self.items[i].clone();
+                self.items[i] = self.items[i - 1].clone();
+                self.items[i - 1] = elem;
+                self.state.select(Some(i - 1));
+            }
+        }
+    }
+
+    fn move_down(&mut self) {
+        if let Some(i) = self.state.selected() {
+            if i < self.items.len() - 1 && self.items[i].1 && self.items[i + 1].1 {
+                let elem = self.items[i].clone();
+                self.items[i] = self.items[i + 1].clone();
+                self.items[i + 1] = elem;
+                self.state.select(Some(i + 1));
+            }
+        }
+    }
 }
 
-pub fn events() -> mpsc::UnboundedReceiver<Key> {
+fn events() -> mpsc::UnboundedReceiver<Key> {
     let (tx, rx) = mpsc::unbounded();
     thread::spawn(move || {
         let stdin = io::stdin();
@@ -260,81 +335,4 @@ pub fn events() -> mpsc::UnboundedReceiver<Key> {
     });
 
     rx
-}
-
-use tui::widgets::ListState;
-
-pub struct StatefulList {
-    pub state: ListState,
-    pub items: Vec<(Room, bool)>,
-}
-
-impl StatefulList {
-    pub fn with_items(items: Vec<(Room, bool)>) -> StatefulList {
-        StatefulList {
-            state: ListState::default(),
-            items,
-        }
-    }
-
-    pub fn next(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.items.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    pub fn previous(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    pub fn unselect(&mut self) {
-        self.state.select(None);
-    }
-
-    pub fn select(&mut self) {
-        if let Some(i) = self.state.selected() {
-            self.items[i].1 ^= true;
-            self.items.sort_by_key(|x| !x.1);
-        }
-    }
-
-    pub fn move_up(&mut self) {
-        if let Some(i) = self.state.selected() {
-            if i > 0 && self.items[i].1 && self.items[i - 1].1 {
-                let elem = self.items[i].clone();
-                self.items[i] = self.items[i - 1].clone();
-                self.items[i - 1] = elem;
-                self.state.select(Some(i - 1));
-            }
-        }
-    }
-
-    pub fn move_down(&mut self) {
-        if let Some(i) = self.state.selected() {
-            if i < self.items.len() - 1 && self.items[i].1 && self.items[i + 1].1 {
-                let elem = self.items[i].clone();
-                self.items[i] = self.items[i + 1].clone();
-                self.items[i + 1] = elem;
-                self.state.select(Some(i + 1));
-            }
-        }
-    }
 }

@@ -184,7 +184,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     client.send_message(&message).await?;
                 }
                 None => {
-                    tui::main(&mut client, config.rooms, pmap_id, user_pmapv_id).await?;
+                    let app =
+                        tui::App::new(&mut client, config.rooms.as_slice(), pmap_id, user_pmapv_id);
+                    app.main_loop().await?;
                 }
             }
 
