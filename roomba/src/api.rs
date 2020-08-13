@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 const POSSIBLE_PREFIXES: &[&str] = &["iRobot", "Roomba"];
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Message {
     Cmd {
@@ -17,7 +17,7 @@ pub enum Message {
     Delta,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum Command {
     Start,
@@ -30,7 +30,7 @@ pub enum Command {
     Train,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Extra {
     StartRegions {
@@ -41,7 +41,7 @@ pub enum Extra {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct Region {
     pub region_id: String,
@@ -85,7 +85,7 @@ impl Message {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Info {
     pub ip: String,
     pub hostname: String,

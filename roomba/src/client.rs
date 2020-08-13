@@ -1,5 +1,5 @@
 use crate::api::{Info, Message};
-use futures_core::stream::Stream;
+use futures::stream::{StreamExt, FusedStream};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use std::collections::HashSet;
 use std::io::Read;
@@ -12,7 +12,7 @@ const GET_PASSWORD_PACKET: &[u8] = &[0xf0, 0x05, 0xef, 0xcc, 0x3b, 0x29, 0x00];
 
 pub struct Client {
     pub mqtt: paho_mqtt::AsyncClient,
-    pub events: Box<dyn Stream<Item = Option<paho_mqtt::message::Message>> + Unpin>,
+    pub events: Box<dyn FusedStream<Item = Option<paho_mqtt::message::Message>> + Unpin>,
 }
 
 impl Client {
@@ -37,6 +37,7 @@ impl Client {
             .ssl_options(ssl_opts)
             .user_name(blid)
             .password(password)
+            .retry_interval(std::time::Duration::from_secs(3))
             .finalize();
 
         let rx = client.get_stream(buffer);
@@ -44,7 +45,7 @@ impl Client {
 
         Ok(Self {
             mqtt: client,
-            events: Box::new(rx),
+            events: Box::new(rx.fuse()),
         })
     }
 

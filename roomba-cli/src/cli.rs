@@ -26,8 +26,6 @@ pub enum Command {
     Evac,
     Train,
     StartRegions {
-        pmap_id: String,
-        user_pmapv_id: String,
         #[structopt(long)]
         ordered: bool,
         #[structopt(parse(from_str), min_values = 1)]
@@ -39,30 +37,33 @@ pub enum Command {
 pub struct AuthenticatedCommand {
     #[structopt(subcommand)]
     pub command: Option<Command>,
-    pub hostname: String,
-    pub username: String,
-    pub password: String,
 }
 
 #[derive(StructOpt, Debug)]
 pub enum UnauthenticatedCommand {
-    FindIp,
-    GetPassword { hostname: String },
+    FindIp {
+        #[structopt(long)]
+        no_save: bool,
+    },
+    GetPassword {
+        hostname: Option<String>,
+        #[structopt(long)]
+        no_save: bool,
+    },
 }
 
 impl Command {
-    pub fn into_command_with_extra(self) -> (api::Command, Option<api::Extra>) {
+    pub fn into_command_with_extra(
+        self,
+        pmap_id: &str,
+        user_pmapv_id: &str,
+    ) -> (api::Command, Option<api::Extra>) {
         match self {
-            Command::StartRegions {
-                pmap_id,
-                user_pmapv_id,
-                ordered,
-                regions,
-            } => (
+            Command::StartRegions { ordered, regions } => (
                 api::Command::Start,
                 Some(api::Extra::StartRegions {
-                    pmap_id,
-                    user_pmapv_id,
+                    pmap_id: pmap_id.to_string(),
+                    user_pmapv_id: user_pmapv_id.to_string(),
                     ordered: ordered.into(),
                     regions,
                 }),
