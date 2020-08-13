@@ -28,8 +28,8 @@ You can use the command:
 roomba-s9plus-cli find-ip
 ```
 
-This command will run indefinitely and show all the Roomba thingies on your
-network.
+After this, the IP address and the user name of the first thingy will be saved
+in `roomba.toml` in your configuration directory (usually `~/.config`).
 
 ### Find the user and password
 
@@ -38,30 +38,64 @@ roomba-s9plus-cli get-password
 ```
 
 This command will wait until the Roomba is in pairing state. You need to hold
-the home button for 2 seconds to get the led ring blinking blue.
+the home button for 2 seconds to get the led ring blinking blue. The password
+will then be saved to the configuration file.
 
 ### Clean specific rooms
 
 #### Find the `pmap_id` and `user_pmapv_id` and `region_id`s
 
-Before continuing, please run a clean on a specific room with the Roomba app.
-Then:
-
 ```
-roomba-s9plus-cli command <roomba_ip> <blid> <password>
+roomba-s9plus-cli command
 ```
 
-**Note:** Use `find-ip` to get the blid and `get-password` to get the password.
+**Note:** Before continuing, use `find-ip` to get the blid and username. Use
+`get-password` to get the password.
 
-The `pmap_id`, `user_pmapv_id` and `region_id`s should be somewhere in the
-JSON.
+The `pmap_id`, `user_pmapv_id` should be displayed in the events.
 
-> $aws/things/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX/shadow/update: {"state":{"reported":{"batPct": 100, ..., "lastCommand": {"command": "start", "initiator": "localApp", "time": 1593182552, "pmap_id": "cWvsuVZwSOmTBN6FTFR95Q", "user_pmapv_id": "200618T164453", "ordered": 1, "regions": [{"region_id": "17", "type": "rid"}]}, "lastDisconnect": 0, ... "vacHigh": false}}}
+The `region_id`s can be guessed by looking at the last command. Run the Roomba
+once with the app and select all the rooms to discover all the ids.
 
-### Run the command
+##### Example
+
+In `roomba.toml`:
+
+```toml
+hostname = "x.x.x.x"
+username = "A41547F457A924C392B7923749823432"
+password = ":1:1598392010:7j28GmnS59cJTmPn"
+user_pmapv_id = "200618T999999"
+pmap_id = "jkd93MkfLd83kDi893kfgQ"
+
+[[rooms]]
+name = "Dinning Room"
+region_id = "1"
+type = "rid"
+
+[[rooms]]
+name = "Bedroom"
+region_id = "2"
+type = "rid"
+
+[[rooms]]
+name = "Living Room"
+region_id = "3"
+type = "rid"
+
+[[rooms]]
+name = "Storage Room"
+region_id = "4"
+type = "rid"
+
+[[rooms]]
+name = "Entryway"
+region_id = "5"
+type = "rid"
+```
+
+### Run the terminal user interface
 
 ```
-roomba-s9plus-cli command <roomba_ip> \
-    <blid> <password> start-regions --ordered <user_pmapv_id> <pmap_id> 17
-# 17 is the ID of the room (region_id)
+roomba-s9plus-cli command
 ```
