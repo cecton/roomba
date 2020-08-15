@@ -1,5 +1,5 @@
 use crate::api::{Info, Message};
-use futures::stream::{StreamExt, FusedStream};
+use futures::stream::{FusedStream, StreamExt};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use std::collections::HashSet;
 use std::io::Read;

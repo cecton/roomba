@@ -151,42 +151,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::AnyCommand::Authenticated(cli) => block_on(async {
             let mut client = Client::new(
                 unwrap!(
-                    config.hostname,
+                    config.hostname.as_ref(),
                     "Missing hostname in the configuration. Please run `{exe} find-ip` first"
                 ),
                 unwrap!(
-                    config.username,
+                    config.username.as_ref(),
                     "Missing username in the configuration. Please run `{exe} find-ip` first"
                 ),
                 unwrap!(
-                    config.password,
+                    config.password.as_ref(),
                     "Missing password in the configuration. Please run `{exe} get-password` first"
                 ),
                 0,
             )
             .await?;
 
-            let pmap_id = unwrap!(
-                config.pmap_id.as_ref(),
-                "Missing pmap_id in the configuration. Please run `{exe} TODO` first"
-            );
-            let user_pmapv_id = unwrap!(
-                config.user_pmapv_id.as_ref(),
-                "Missing user_pmapv_id in the configuration. Please run `{exe} TODO` \
-                            first"
-            );
-
             match cli.command {
                 Some(command) => {
+                    let pmap_id = unwrap!(
+                        config.pmap_id.as_ref(),
+                        "Missing pmap_id in the configuration. Please run `{exe} TODO` first"
+                    );
+                    let user_pmapv_id = unwrap!(
+                        config.user_pmapv_id.as_ref(),
+                        "Missing user_pmapv_id in the configuration. Please run `{exe} TODO` \
+                        first"
+                    );
+
                     let (command, extra) = command.into_command_with_extra(pmap_id, user_pmapv_id);
                     let message = api::Message::new_command(command, extra);
 
                     client.send_message(&message).await?;
                 }
                 None => {
-                    let app =
-                        tui::App::new(&mut client, config.rooms.as_slice(), pmap_id, user_pmapv_id);
-                    app.main_loop().await?;
+                    let map = config
+                        .pmap_id
+                        .clone()
+                        .and_then(|x| config.user_pmapv_id.clone().map(|y| (x, y)));
+                    let save = map.is_none();
+
+                    let app = tui::App::new(&mut client, config.rooms.as_slice(), map);
+                    let map = app.main_loop().await?;
+
+                    if save {
+                        if let Some((pmap_id, user_pmapv_id)) = map {
+                            config.pmap_id = Some(pmap_id);
+                            config.user_pmapv_id = Some(user_pmapv_id);
+                            save_config(config);
+                        }
+                    }
                 }
             }
 

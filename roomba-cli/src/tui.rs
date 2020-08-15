@@ -45,18 +45,19 @@ macro_rules! safe_json_traversal {
     }};
 }
 
+type Map = (String, String);
+
 pub struct App<'a> {
     client: &'a mut Client,
     events: Vec<(Vec<String>, String)>,
     items: Vec<(Room, bool)>,
-    pmap_id: String,
+    map: Option<Map>,
     running: bool,
     state: ListState,
-    user_pmapv_id: String,
 }
 
 impl<'a> App<'a> {
-    pub fn new(client: &'a mut Client, rooms: &[Room], pmap_id: &str, user_pmapv_id: &str) -> Self {
+    pub fn new(client: &'a mut Client, rooms: &[Room], map: Option<Map>) -> Self {
         let mut rooms = rooms.to_vec();
         rooms.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -67,10 +68,9 @@ impl<'a> App<'a> {
             client,
             events: vec![],
             items: rooms.into_iter().map(|x| (x, false)).collect(),
-            pmap_id: pmap_id.to_string(),
+            map,
             running: true,
             state,
-            user_pmapv_id: user_pmapv_id.to_string(),
         }
     }
 
@@ -94,6 +94,18 @@ impl<'a> App<'a> {
         if let Ok(pmaps) = safe_json_traversal!(payload => state => reported => pmaps) {
             let pretty = serde_json::to_string_pretty(pmaps)?;
             self.log(pretty.lines().map(Into::into).collect(), "PMAPS");
+
+            if self.map.is_none() {
+                if let Some(array) = pmaps.as_array() {
+                    if let Some(object) = array.get(0).and_then(|x| x.as_object()) {
+                        if let Some((pmap_id, user_pmapv_id)) = object.iter().next() {
+                            if let Some(user_pmapv_id) = user_pmapv_id.as_str() {
+                                self.map = Some((pmap_id.to_string(), user_pmapv_id.to_string()));
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -103,7 +115,7 @@ impl<'a> App<'a> {
         self.events.insert(0, (command, "command".to_string()));
     }
 
-    pub async fn main_loop(mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn main_loop(mut self) -> Result<Option<Map>, Box<dyn Error>> {
         // Terminal initialization
         let stdout = io::stdout().into_raw_mode()?;
         let stdout = MouseTerminal::from(stdout);
@@ -136,7 +148,7 @@ impl<'a> App<'a> {
             }
         }
 
-        Ok(())
+        Ok(self.map)
     }
 
     fn render<B: tui::backend::Backend>(
@@ -217,46 +229,53 @@ impl<'a> App<'a> {
     }
 
     async fn start_job(&mut self) {
-        let rooms: Vec<_> = self
-            .items
-            .iter()
-            .filter_map(
-                |(room, selected)| {
-                    if *selected {
-                        Some(room.clone())
-                    } else {
-                        None
-                    }
-                },
-            )
-            .collect();
-        self.command(
-            rooms
+        if let Some((pmap_id, user_pmapv_id)) = self.map.clone() {
+            let rooms: Vec<_> = self
+                .items
                 .iter()
-                .enumerate()
-                .map(|(i, room)| format!("{:>2}. {}", i + 1, room))
-                .collect(),
-        );
-        let command = api::Command::Start;
-        let extra = api::Extra::StartRegions {
-            ordered: 1,
-            pmap_id: self.pmap_id.clone(),
-            user_pmapv_id: self.user_pmapv_id.clone(),
-            regions: rooms.iter().map(|x| x.region.clone()).collect(),
-        };
-        let message = api::Message::new_command(command, Some(extra));
-        self.client
-            .send_message(&message)
-            .await
-            .unwrap_or_else(|err| {
-                self.log(
-                    vec![
-                        "Could not send message to the device:".to_string(),
-                        err.to_string(),
-                    ],
-                    "ERROR",
-                );
-            });
+                .filter_map(
+                    |(room, selected)| {
+                        if *selected {
+                            Some(room.clone())
+                        } else {
+                            None
+                        }
+                    },
+                )
+                .collect();
+            self.command(
+                rooms
+                    .iter()
+                    .enumerate()
+                    .map(|(i, room)| format!("{:>2}. {}", i + 1, room))
+                    .collect(),
+            );
+            let command = api::Command::Start;
+            let extra = api::Extra::StartRegions {
+                ordered: 1,
+                pmap_id,
+                user_pmapv_id,
+                regions: rooms.iter().map(|x| x.region.clone()).collect(),
+            };
+            let message = api::Message::new_command(command, Some(extra));
+            self.client
+                .send_message(&message)
+                .await
+                .unwrap_or_else(|err| {
+                    self.log(
+                        vec![
+                            "Could not send message to the device:".to_string(),
+                            err.to_string(),
+                        ],
+                        "ERROR",
+                    );
+                });
+        } else {
+            self.log(
+                vec!["pmap_id and user_pmapv_id not set!".to_string()],
+                "ERROR",
+            );
+        }
     }
 
     fn next(&mut self) {
