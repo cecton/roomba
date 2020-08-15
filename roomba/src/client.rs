@@ -70,6 +70,7 @@ impl Client {
 
         let mut builder = SslConnector::builder(SslMethod::tls())?;
         builder.set_verify(SslVerifyMode::NONE);
+        builder.set_cipher_list("AES128-SHA256").unwrap();
         let connector = builder.build();
 
         let uri = format!("{}:8883", hostname.as_ref());
