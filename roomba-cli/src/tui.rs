@@ -281,7 +281,7 @@ impl<'a> App<'a> {
     fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.items.len() - 1 {
+                if self.items.is_empty() || i >= self.items.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -295,7 +295,9 @@ impl<'a> App<'a> {
     fn previous(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-                if i == 0 {
+                if self.items.is_empty() {
+                    0
+                } else if i == 0 {
                     self.items.len() - 1
                 } else {
                     i - 1
@@ -308,8 +310,10 @@ impl<'a> App<'a> {
 
     fn toggle(&mut self) {
         if let Some(i) = self.state.selected() {
-            self.items[i].1 ^= true;
-            self.items.sort_by_key(|x| !x.1);
+            if self.items.len() > i {
+                self.items[i].1 ^= true;
+                self.items.sort_by_key(|x| !x.1);
+            }
         }
     }
 
@@ -326,7 +330,11 @@ impl<'a> App<'a> {
 
     fn move_down(&mut self) {
         if let Some(i) = self.state.selected() {
-            if i < self.items.len() - 1 && self.items[i].1 && self.items[i + 1].1 {
+            if !self.items.is_empty()
+                && i < self.items.len() - 1
+                && self.items[i].1
+                && self.items[i + 1].1
+            {
                 let elem = self.items[i].clone();
                 self.items[i] = self.items[i + 1].clone();
                 self.items[i + 1] = elem;
