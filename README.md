@@ -1,6 +1,11 @@
 Roomba
 ======
 
+Known supported devices
+-----------------------
+
+ *  Roomba S9+
+
 Installation
 ------------
 
