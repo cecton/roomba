@@ -22,15 +22,18 @@ impl Client {
         password: P,
         buffer: usize,
     ) -> paho_mqtt::Result<Self> {
+        let blid = blid.into();
         let uri = format!("ssl://{}:8883", hostname.as_ref());
         let opts = paho_mqtt::CreateOptionsBuilder::new()
             .server_uri(uri)
+            .client_id(blid.clone())
             .finalize();
 
         let mut client = paho_mqtt::AsyncClient::new(opts)?;
 
         let ssl_opts = paho_mqtt::SslOptionsBuilder::new()
             .enable_server_cert_auth(false)
+            .enabled_cipher_suites("DEFAULT:!DH")
             .finalize();
 
         let conn_opts = paho_mqtt::ConnectOptionsBuilder::new()
