@@ -1,5 +1,6 @@
 [workspace]
 members = [
-	"roomba",
-	"roomba-cli",
+    "roomba",
+    "roomba-cli",
+    "roomba-gui",
 ]

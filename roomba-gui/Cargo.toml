@@ -1,0 +1,17 @@
+[package]
+name = "roomba-gui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1"
+dirs = "4"
+eframe = "0.18"
+futures = "0.3"
+futures-timer = "3"
+paho-mqtt = { git = "https://github.com/eclipse/paho.mqtt.rust.git", rev = "47eb3eaee53a9e5f3687f9120b20d15a22a7bb9f" }
+roomba = { path = "../roomba", version = "0.1" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.5"
