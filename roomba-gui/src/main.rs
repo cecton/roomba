@@ -50,6 +50,7 @@ fn main() -> Result<()> {
 
     let options = eframe::NativeOptions {
         maximized: true,
+        initial_window_size: Some([1280.0, 800.0].into()),
         ..Default::default()
     };
     eframe::run_native(
@@ -59,7 +60,7 @@ fn main() -> Result<()> {
             // Force dark mode
             cc.egui_ctx.set_visuals(egui::Visuals::dark());
             // Forcer PPP to 2.0
-            cc.egui_ctx.set_pixels_per_point(2.0);
+            cc.egui_ctx.set_pixels_per_point(2.5);
             Box::new(MyApp::new(
                 client,
                 config.rooms.as_slice(),
